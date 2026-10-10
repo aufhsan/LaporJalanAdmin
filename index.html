@@ -32,6 +32,15 @@
         .badge.parah { background: #e03131; }
         .pin { width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
         .pin::after { content: ''; position: absolute; width: 8px; height: 8px; background: white; border-radius: 50%; top: 6px; left: 6px; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+        .filter-bar .label { font-weight: bold; font-size: 14px; margin-right: 4px; }
+        .fbtn { padding: 8px 14px; border: 2px solid #ccc; background: white; border-radius: 20px; cursor: pointer; font-size: 14px; font-weight: 600; color: #444; transition: 0.15s; }
+        .fbtn:hover { border-color: #888; }
+        .fbtn.aktif { color: white; border-color: transparent; }
+        .fbtn.aktif[data-f="semua"] { background: #343a40; }
+        .fbtn.aktif[data-f="ringan"] { background: #f2b705; color: #333; }
+        .fbtn.aktif[data-f="sedang"] { background: #ff922b; }
+        .fbtn.aktif[data-f="parah"] { background: #e03131; }
         .legenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; margin-bottom: 10px; }
         .legenda i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
         td.desk { max-width: 260px; word-break: break-word; }
@@ -58,6 +67,13 @@
             <button class="btn btn-out" id="btnLogout">Keluar</button>
         </header>
         <div class="page">
+            <div class="filter-bar" id="filterBar">
+                <span class="label">🔎 Filter tingkat:</span>
+                <button class="fbtn aktif" data-f="semua">Semua (0)</button>
+                <button class="fbtn" data-f="ringan">🟡 Ringan (0)</button>
+                <button class="fbtn" data-f="sedang">🟠 Sedang (0)</button>
+                <button class="fbtn" data-f="parah">🔴 Parah (0)</button>
+            </div>
             <div class="legenda">
                 <span><i style="background:#f2b705"></i>Ringan</span>
                 <span><i style="background:#ff922b"></i>Sedang</span>
@@ -166,6 +182,32 @@
             tampilkanLogin();
         });
 
+        let semuaLaporan = [];
+        let filterAktif = 'semua';
+
+        function tingkatValid(r) {
+            return ['ringan', 'sedang', 'parah'].includes(r.tingkat) ? r.tingkat : null;
+        }
+
+        function updateTombolFilter() {
+            const hitung = { semua: semuaLaporan.length, ringan: 0, sedang: 0, parah: 0 };
+            semuaLaporan.forEach(r => { const t = tingkatValid(r); if (t) hitung[t]++; });
+            const nama = { semua: 'Semua', ringan: '🟡 Ringan', sedang: '🟠 Sedang', parah: '🔴 Parah' };
+            document.querySelectorAll('.fbtn').forEach(b => {
+                const f = b.dataset.f;
+                b.textContent = `${nama[f]} (${hitung[f]})`;
+                b.classList.toggle('aktif', f === filterAktif);
+            });
+        }
+
+        document.getElementById('filterBar').addEventListener('click', e => {
+            const b = e.target.closest('.fbtn');
+            if (!b) return;
+            filterAktif = b.dataset.f;
+            updateTombolFilter();
+            tampilkanLaporan(true);
+        });
+
         async function muatData() {
             const tabel = document.getElementById('tabelLaporan');
             tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Memuat data laporan...</td></tr>`;
@@ -177,45 +219,64 @@
                     .order('waktu', { ascending: false });
                 if (error) throw error;
 
-                tabel.innerHTML = "";
-                if (map) penandaPeta.forEach(m => map.removeLayer(m));
-                penandaPeta = [];
-
-                if (!logs || logs.length === 0) {
-                    tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Belum ada data laporan masuk.</td></tr>`;
-                    return;
-                }
-
-                let terbaru = null;
-                logs.forEach(r => {
-                    const waktu = new Date(r.waktu).toLocaleString('id-ID');
-                    const tingkat = ['ringan', 'sedang', 'parah'].includes(r.tingkat) ? r.tingkat : null;
-                    const deskripsi = r.deskripsi ? esc(r.deskripsi) : '<i style="color:#999">-</i>';
-                    const foto = esc(r.foto_url);
-                    const badge = tingkat ? `<span class="badge ${tingkat}">${tingkat}</span>` : '<i style="color:#999">-</i>';
-
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td><img src="${foto}" class="img-thumbnail"></td>
-                        <td>${badge}</td>
-                        <td class="desk">${deskripsi}</td>
-                        <td>${waktu}</td>
-                        <td>${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}</td>
-                        <td><a class="btn-peta" href="https://www.google.com/maps?q=${Number(r.latitude)},${Number(r.longitude)}" target="_blank">🗺️ Peta</a></td>`;
-                    tr.querySelector('img').addEventListener('click', () => window.open(r.foto_url, '_blank'));
-                    tabel.appendChild(tr);
-
-                    if (map) {
-                        const mk = L.marker([r.latitude, r.longitude], { icon: buatIkon(tingkat) }).addTo(map)
-                            .bindPopup(`<b>Laporan Kerusakan</b> ${badge}<br>Waktu: ${waktu}<br>${r.deskripsi ? esc(r.deskripsi) + '<br>' : ''}<img src="${foto}" style="width:140px;margin-top:5px;border-radius:5px;">`);
-                        penandaPeta.push(mk);
-                    }
-                    if (!terbaru) terbaru = [r.latitude, r.longitude];
-                });
-                if (map && terbaru) map.setView(terbaru, 14);
+                semuaLaporan = logs || [];
+                updateTombolFilter();
+                tampilkanLaporan(true);
             } catch (err) {
                 console.error(err);
-                tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Gagal memuat data: ${err.message}</td></tr>`;
+                tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Gagal memuat data: ${esc(err.message)}</td></tr>`;
+            }
+        }
+
+        // Menampilkan tabel + pin peta sesuai filter yang aktif
+        function tampilkanLaporan(geserPeta) {
+            const tabel = document.getElementById('tabelLaporan');
+            tabel.innerHTML = "";
+            if (map) penandaPeta.forEach(m => map.removeLayer(m));
+            penandaPeta = [];
+
+            const tampil = semuaLaporan.filter(r => filterAktif === 'semua' || tingkatValid(r) === filterAktif);
+
+            if (semuaLaporan.length === 0) {
+                tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Belum ada data laporan masuk.</td></tr>`;
+                return;
+            }
+            if (tampil.length === 0) {
+                tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Tidak ada laporan dengan tingkat "${esc(filterAktif)}".</td></tr>`;
+                return;
+            }
+
+            const titik = [];
+            tampil.forEach(r => {
+                const waktu = new Date(r.waktu).toLocaleString('id-ID');
+                const tingkat = tingkatValid(r);
+                const deskripsi = r.deskripsi ? esc(r.deskripsi) : '<i style="color:#999">-</i>';
+                const foto = esc(r.foto_url);
+                const badge = tingkat ? `<span class="badge ${tingkat}">${tingkat}</span>` : '<i style="color:#999">-</i>';
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><img src="${foto}" class="img-thumbnail"></td>
+                    <td>${badge}</td>
+                    <td class="desk">${deskripsi}</td>
+                    <td>${waktu}</td>
+                    <td>${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}</td>
+                    <td><a class="btn-peta" href="https://www.google.com/maps?q=${Number(r.latitude)},${Number(r.longitude)}" target="_blank">🗺️ Peta</a></td>`;
+                tr.querySelector('img').addEventListener('click', () => window.open(r.foto_url, '_blank'));
+                tabel.appendChild(tr);
+
+                if (map) {
+                    const mk = L.marker([r.latitude, r.longitude], { icon: buatIkon(tingkat) }).addTo(map)
+                        .bindPopup(`<b>Laporan Kerusakan</b> ${badge}<br>Waktu: ${waktu}<br>${r.deskripsi ? esc(r.deskripsi) + '<br>' : ''}<img src="${foto}" style="width:140px;margin-top:5px;border-radius:5px;">`);
+                    penandaPeta.push(mk);
+                }
+                titik.push([r.latitude, r.longitude]);
+            });
+
+            // Zoom peta agar semua pin hasil filter terlihat
+            if (map && geserPeta && titik.length) {
+                if (titik.length === 1) map.setView(titik[0], 15);
+                else map.fitBounds(L.latLngBounds(titik), { padding: [40, 40], maxZoom: 16 });
             }
         }
     </script>
