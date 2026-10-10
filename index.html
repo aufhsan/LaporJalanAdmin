@@ -26,6 +26,15 @@
         th { background: #343a40; color: white; }
         tr:hover { background: #f8f9fa; }
         .img-thumbnail { width: 60px; height: 60px; object-fit: cover; border-radius: 5px; cursor: pointer; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; color: white; text-transform: capitalize; }
+        .badge.ringan { background: #f2b705; color: #333; }
+        .badge.sedang { background: #ff922b; }
+        .badge.parah { background: #e03131; }
+        .pin { width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+        .pin::after { content: ''; position: absolute; width: 8px; height: 8px; background: white; border-radius: 50%; top: 6px; left: 6px; }
+        .legenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; margin-bottom: 10px; }
+        .legenda i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+        td.desk { max-width: 260px; word-break: break-word; }
         a.btn-peta { background: #6f42c1; color: white; padding: 6px 12px; font-size: 12px; border-radius: 5px; text-decoration: none; }
     </style>
 </head>
@@ -49,13 +58,18 @@
             <button class="btn btn-out" id="btnLogout">Keluar</button>
         </header>
         <div class="page">
+            <div class="legenda">
+                <span><i style="background:#f2b705"></i>Ringan</span>
+                <span><i style="background:#ff922b"></i>Sedang</span>
+                <span><i style="background:#e03131"></i>Parah</span>
+            </div>
             <div id="map"></div>
             <div class="card">
                 <h3 style="margin-top:0">Daftar Laporan Masuk</h3>
                 <div class="table-responsive">
                     <table>
                         <thead>
-                            <tr><th>Foto</th><th>Waktu</th><th>Koordinat (Lat, Lng)</th><th>Aksi</th></tr>
+                            <tr><th>Foto</th><th>Tingkat</th><th>Deskripsi</th><th>Waktu</th><th>Koordinat</th><th>Aksi</th></tr>
                         </thead>
                         <tbody id="tabelLaporan"></tbody>
                     </table>
@@ -75,6 +89,24 @@
         const dashboard = document.getElementById('dashboard');
         const pesanLogin = document.getElementById('pesanLogin');
         const btnLogin = document.getElementById('btnLogin');
+
+        const WARNA = { ringan: '#f2b705', sedang: '#ff922b', parah: '#e03131' };
+
+        // Amankan teks dari user sebelum ditampilkan sebagai HTML
+        function esc(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function buatIkon(tingkat) {
+            const warna = WARNA[tingkat] || '#6c757d';
+            return L.divIcon({
+                className: '',
+                html: `<div class="pin" style="background:${warna}; position:relative;"></div>`,
+                iconSize: [26, 26],
+                iconAnchor: [13, 26],
+                popupAnchor: [0, -26]
+            });
+        }
 
         let map = null;
         let penandaPeta = [];
@@ -136,7 +168,7 @@
 
         async function muatData() {
             const tabel = document.getElementById('tabelLaporan');
-            tabel.innerHTML = `<tr><td colspan="4" style="text-align:center">Memuat data laporan...</td></tr>`;
+            tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Memuat data laporan...</td></tr>`;
 
             try {
                 const { data: logs, error } = await db
@@ -150,24 +182,32 @@
                 penandaPeta = [];
 
                 if (!logs || logs.length === 0) {
-                    tabel.innerHTML = `<tr><td colspan="4" style="text-align:center">Belum ada data laporan masuk.</td></tr>`;
+                    tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Belum ada data laporan masuk.</td></tr>`;
                     return;
                 }
 
                 let terbaru = null;
                 logs.forEach(r => {
                     const waktu = new Date(r.waktu).toLocaleString('id-ID');
+                    const tingkat = ['ringan', 'sedang', 'parah'].includes(r.tingkat) ? r.tingkat : null;
+                    const deskripsi = r.deskripsi ? esc(r.deskripsi) : '<i style="color:#999">-</i>';
+                    const foto = esc(r.foto_url);
+                    const badge = tingkat ? `<span class="badge ${tingkat}">${tingkat}</span>` : '<i style="color:#999">-</i>';
+
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td><img src="${r.foto_url}" class="img-thumbnail" onclick="window.open('${r.foto_url}', '_blank')"></td>
+                        <td><img src="${foto}" class="img-thumbnail"></td>
+                        <td>${badge}</td>
+                        <td class="desk">${deskripsi}</td>
                         <td>${waktu}</td>
                         <td>${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}</td>
-                        <td><a class="btn-peta" href="https://www.google.com/maps?q=${r.latitude},${r.longitude}" target="_blank">🗺️ Peta</a></td>`;
+                        <td><a class="btn-peta" href="https://www.google.com/maps?q=${Number(r.latitude)},${Number(r.longitude)}" target="_blank">🗺️ Peta</a></td>`;
+                    tr.querySelector('img').addEventListener('click', () => window.open(r.foto_url, '_blank'));
                     tabel.appendChild(tr);
 
                     if (map) {
-                        const mk = L.marker([r.latitude, r.longitude]).addTo(map)
-                            .bindPopup(`<b>Laporan Kerusakan</b><br>Waktu: ${waktu}<br><img src="${r.foto_url}" style="width:120px;margin-top:5px;border-radius:5px;">`);
+                        const mk = L.marker([r.latitude, r.longitude], { icon: buatIkon(tingkat) }).addTo(map)
+                            .bindPopup(`<b>Laporan Kerusakan</b> ${badge}<br>Waktu: ${waktu}<br>${r.deskripsi ? esc(r.deskripsi) + '<br>' : ''}<img src="${foto}" style="width:140px;margin-top:5px;border-radius:5px;">`);
                         penandaPeta.push(mk);
                     }
                     if (!terbaru) terbaru = [r.latitude, r.longitude];
@@ -175,7 +215,7 @@
                 if (map && terbaru) map.setView(terbaru, 14);
             } catch (err) {
                 console.error(err);
-                tabel.innerHTML = `<tr><td colspan="4" style="text-align:center">Gagal memuat data: ${err.message}</td></tr>`;
+                tabel.innerHTML = `<tr><td colspan="6" style="text-align:center">Gagal memuat data: ${err.message}</td></tr>`;
             }
         }
     </script>
