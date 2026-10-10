@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Admin - Lapor Jalan</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: #f4f6f9; color: #333; }
+        header { background: #343a40; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
+        header span { font-weight: bold; font-size: 18px; }
+        .page { padding: 20px; max-width: 900px; margin: 0 auto; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .btn { background: #6f42c1; color: white; padding: 10px 18px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
+        .btn:disabled { background: #ccc; }
+        .btn-out { background: #dc3545; }
+        input[type=email], input[type=password] { width: 100%; box-sizing: border-box; padding: 12px; margin: 6px 0 14px; border: 1px solid #ccc; border-radius: 5px; font-size: 15px; }
+        #boxLogin { max-width: 380px; margin: 60px auto; }
+        #pesanLogin { color: #dc3545; font-size: 14px; margin-top: 10px; }
+        #dashboard { display: none; }
+        #map { height: 350px; width: 100%; border-radius: 10px; margin-bottom: 20px; }
+        .table-responsive { overflow-x: auto; margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #343a40; color: white; }
+        tr:hover { background: #f8f9fa; }
+        .img-thumbnail { width: 60px; height: 60px; object-fit: cover; border-radius: 5px; cursor: pointer; }
+        a.btn-peta { background: #6f42c1; color: white; padding: 6px 12px; font-size: 12px; border-radius: 5px; text-decoration: none; }
+    </style>
+</head>
+<body>
+
+    <!-- LOGIN -->
+    <div id="boxLogin" class="card">
+        <h2 style="margin-top:0">🔐 Login Admin</h2>
+        <label>Email</label>
+        <input type="email" id="inEmail" autocomplete="username">
+        <label>Password</label>
+        <input type="password" id="inPass" autocomplete="current-password">
+        <button class="btn" id="btnLogin" style="width:100%">Masuk</button>
+        <div id="pesanLogin"></div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard">
+        <header>
+            <span>💻 Dashboard Admin - Lapor Jalan</span>
+            <button class="btn btn-out" id="btnLogout">Keluar</button>
+        </header>
+        <div class="page">
+            <div id="map"></div>
+            <div class="card">
+                <h3 style="margin-top:0">Daftar Laporan Masuk</h3>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr><th>Foto</th><th>Waktu</th><th>Koordinat (Lat, Lng)</th><th>Aksi</th></tr>
+                        </thead>
+                        <tbody id="tabelLaporan"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = "https://ilmnhyyarurqszcyidnx.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsbW5oeXlhcnVycXN6Y3lpZG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1Nzc0MzQsImV4cCI6MjEwNzE1MzQzNH0.sbvZvD_WOHvpTpwy6dc9Kcdql4BLqKjQR10v5VmJrFo";
+        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const boxLogin = document.getElementById('boxLogin');
+        const dashboard = document.getElementById('dashboard');
+        const pesanLogin = document.getElementById('pesanLogin');
+        const btnLogin = document.getElementById('btnLogin');
+
+        let map = null;
+        let penandaPeta = [];
+
+        function initPeta() {
+            if (map) return;
+            try {
+                map = L.map('map').setView([-2.5489, 118.0149], 5);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+            } catch (e) {
+                console.error("Peta gagal dimuat:", e);
+            }
+        }
+
+        function tampilkanDashboard() {
+            boxLogin.style.display = "none";
+            dashboard.style.display = "block";
+            initPeta();
+            if (map) setTimeout(() => map.invalidateSize(), 200);
+            muatData();
+        }
+
+        function tampilkanLogin() {
+            dashboard.style.display = "none";
+            boxLogin.style.display = "block";
+        }
+
+        // Cek sesi login yang masih aktif
+        db.auth.getSession().then(({ data }) => {
+            if (data.session) tampilkanDashboard();
+        });
+
+        btnLogin.addEventListener('click', async () => {
+            pesanLogin.innerText = "";
+            btnLogin.disabled = true;
+            const { error } = await db.auth.signInWithPassword({
+                email: document.getElementById('inEmail').value.trim(),
+                password: document.getElementById('inPass').value
+            });
+            btnLogin.disabled = false;
+            if (error) {
+                pesanLogin.innerText = "Login gagal: " + error.message;
+                return;
+            }
+            document.getElementById('inPass').value = "";
+            tampilkanDashboard();
+        });
+
+        document.getElementById('inPass').addEventListener('keydown', e => {
+            if (e.key === 'Enter') btnLogin.click();
+        });
+
+        document.getElementById('btnLogout').addEventListener('click', async () => {
+            await db.auth.signOut();
+            tampilkanLogin();
+        });
+
+        async function muatData() {
+            const tabel = document.getElementById('tabelLaporan');
+            tabel.innerHTML = `<tr><td colspan="4" style="text-align:center">Memuat data laporan...</td></tr>`;
+
+            try {
+                const { data: logs, error } = await db
+                    .from('laporan_jalan')
+                    .select('*')
+                    .order('waktu', { ascending: false });
+                if (error) throw error;
+
+                tabel.innerHTML = "";
+                if (map) penandaPeta.forEach(m => map.removeLayer(m));
+                penandaPeta = [];
+
+                if (!logs || logs.length === 0) {
+                    tabel.innerHTML = `<tr><td colspan="4" style="text-align:center">Belum ada data laporan masuk.</td></tr>`;
+                    return;
+                }
+
+                let terbaru = null;
+                logs.forEach(r => {
+                    const waktu = new Date(r.waktu).toLocaleString('id-ID');
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><img src="${r.foto_url}" class="img-thumbnail" onclick="window.open('${r.foto_url}', '_blank')"></td>
+                        <td>${waktu}</td>
+                        <td>${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}</td>
+                        <td><a class="btn-peta" href="https://www.google.com/maps?q=${r.latitude},${r.longitude}" target="_blank">🗺️ Peta</a></td>`;
+                    tabel.appendChild(tr);
+
+                    if (map) {
+                        const mk = L.marker([r.latitude, r.longitude]).addTo(map)
+                            .bindPopup(`<b>Laporan Kerusakan</b><br>Waktu: ${waktu}<br><img src="${r.foto_url}" style="width:120px;margin-top:5px;border-radius:5px;">`);
+                        penandaPeta.push(mk);
+                    }
+                    if (!terbaru) terbaru = [r.latitude, r.longitude];
+                });
+                if (map && terbaru) map.setView(terbaru, 14);
+            } catch (err) {
+                console.error(err);
+                tabel.innerHTML = `<tr><td colspan="4" style="text-align:center">Gagal memuat data: ${err.message}</td></tr>`;
+            }
+        }
+    </script>
+</body>
+</html>
