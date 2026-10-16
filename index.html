@@ -87,6 +87,13 @@
         <div id="pesanLogin"></div>
     </div>
 
+    <!-- Catatan kredensial admin: hanya tampil di komputer sendiri (lihat KREDENSIAL_TAMPIL_PUBLIK di script) -->
+    <div id="infoAdmin" class="card" style="display:none; max-width:380px; margin:-30px auto 60px; font-size:14px; background:#fff9db;">
+        <b>🔑 Akun admin</b><br>
+        Email: <code id="infoEmail"></code><br>
+        Password: <code id="infoPass"></code>
+    </div>
+
     <!-- DASHBOARD -->
     <div id="dashboard">
         <header>
@@ -151,6 +158,17 @@
         const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         const $ = id => document.getElementById(id);
+
+        // Kredensial admin (hanya pengingat). Di situs publik (GitHub Pages) disembunyikan karena
+        // siapa pun bisa membacanya. Ubah ke true HANYA bila Anda paham risikonya.
+        const KREDENSIAL_TAMPIL_PUBLIK = true;
+        (function () {
+            const lokal = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+            if (!lokal && !KREDENSIAL_TAMPIL_PUBLIK) return;
+            $('infoEmail').textContent = 'adhitpratama521@gmail.com';
+            $('infoPass').textContent = 'adhitpra521';
+            $('infoAdmin').style.display = 'block';
+        })();
         const WARNA = { ringan: '#f2b705', sedang: '#ff922b', parah: '#e03131' };
         const COLSPAN = 8;
 
@@ -189,7 +207,7 @@
 
         // ---------- Login ----------
         function tampilkanDashboard() {
-            $('boxLogin').style.display = "none";
+            $('boxLogin').style.display = "none"; $('infoAdmin').style.display = "none";
             $('dashboard').style.display = "block";
             initPeta();
             if (map) setTimeout(() => map.invalidateSize(), 200);
