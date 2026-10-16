@@ -27,7 +27,7 @@
         .stat { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 6px solid #6f42c1; }
         .stat .angka { font-size: 28px; font-weight: bold; }
         .stat .ket { font-size: 13px; color: #666; }
-        .stat.baru { border-color: #868e96; } .stat.diproses { border-color: #1c7ed6; } .stat.selesai { border-color: #2f9e44; }
+        .stat.dikonfirmasi { border-color: #7048e8; } .stat.ditolak { border-color: #e03131; } .stat.baru { border-color: #868e96; } .stat.diproses { border-color: #1c7ed6; } .stat.selesai { border-color: #2f9e44; }
 
         /* Toolbar */
         .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
@@ -65,6 +65,8 @@
         .catatan-kecil { margin-top: 6px; font-size: 12px; color: #856404; background: #fff9db; padding: 4px 6px; border-radius: 4px; }
         select.sel-status { padding: 6px; border-radius: 6px; border: 2px solid #ccc; font-weight: 600; font-size: 13px; }
         select.sel-status.baru { border-color: #868e96; }
+        select.sel-status.dikonfirmasi { border-color: #7048e8; color: #7048e8; }
+        select.sel-status.ditolak { border-color: #e03131; color: #e03131; }
         select.sel-status.diproses { border-color: #1c7ed6; color: #1c7ed6; }
         select.sel-status.selesai { border-color: #2f9e44; color: #2f9e44; }
         .aksi { display: flex; gap: 5px; flex-wrap: wrap; }
@@ -103,8 +105,10 @@
                 <select id="selStatus">
                     <option value="semua">Semua status</option>
                     <option value="baru">🆕 Baru</option>
+                    <option value="dikonfirmasi">☑️ Dikonfirmasi</option>
                     <option value="diproses">🛠️ Diproses</option>
                     <option value="selesai">✅ Selesai</option>
+                    <option value="ditolak">⛔ Ditolak</option>
                 </select>
                 <button class="btn btn-hijau" id="btnCsv">⬇️ Ekspor CSV</button>
             </div>
@@ -154,7 +158,12 @@
             return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
         const tingkatValid = r => ['ringan', 'sedang', 'parah'].includes(r.tingkat) ? r.tingkat : null;
-        const statusValid = r => ['baru', 'diproses', 'selesai'].includes(r.status) ? r.status : 'baru';
+        // 'menunggu'/'terkirim' (dari aplikasi pengguna) dianggap Baru; 'diverifikasi' = Dikonfirmasi
+        const statusValid = r => {
+            const s = String(r.status || '').toLowerCase();
+            if (s === 'diverifikasi' || s === 'terverifikasi') return 'dikonfirmasi';
+            return ['dikonfirmasi', 'diproses', 'selesai', 'ditolak'].includes(s) ? s : 'baru';
+        };
 
         function buatIkon(tingkat) {
             const warna = WARNA[tingkat] || '#6c757d';
@@ -217,13 +226,15 @@
         let sedangTampil = [];
 
         function updateStatistik() {
-            const c = { baru: 0, diproses: 0, selesai: 0 };
+            const c = { baru: 0, dikonfirmasi: 0, diproses: 0, selesai: 0, ditolak: 0 };
             semuaLaporan.forEach(r => c[statusValid(r)]++);
             $('stats').innerHTML = `
                 <div class="stat"><div class="angka">${semuaLaporan.length}</div><div class="ket">Total laporan</div></div>
                 <div class="stat baru"><div class="angka">${c.baru}</div><div class="ket">🆕 Baru</div></div>
+                <div class="stat dikonfirmasi"><div class="angka">${c.dikonfirmasi}</div><div class="ket">☑️ Dikonfirmasi</div></div>
                 <div class="stat diproses"><div class="angka">${c.diproses}</div><div class="ket">🛠️ Diproses</div></div>
-                <div class="stat selesai"><div class="angka">${c.selesai}</div><div class="ket">✅ Selesai</div></div>`;
+                <div class="stat selesai"><div class="angka">${c.selesai}</div><div class="ket">✅ Selesai</div></div>
+                <div class="stat ditolak"><div class="angka">${c.ditolak}</div><div class="ket">⛔ Ditolak</div></div>`;
         }
 
         function updateTombolFilter() {
@@ -299,7 +310,7 @@
                 const badge = tingkat ? `<span class="badge ${tingkat}">${tingkat}</span>` : '<i style="color:#999">-</i>';
 
                 const tr = document.createElement('tr');
-                if (status === 'selesai') tr.className = 'selesai-row';
+                if (status === 'selesai' || status === 'ditolak') tr.className = 'selesai-row';
                 tr.innerHTML = `
                     <td><img src="${foto}" class="img-thumbnail"></td>
                     <td class="kode">${esc(r.kode || '-')}</td>
@@ -307,8 +318,10 @@
                     <td>
                         <select class="sel-status ${status}">
                             <option value="baru">🆕 Baru</option>
+                            <option value="dikonfirmasi">☑️ Dikonfirmasi (+15 poin)</option>
                             <option value="diproses">🛠️ Diproses</option>
-                            <option value="selesai">✅ Selesai</option>
+                            <option value="selesai">✅ Selesai (+25 poin)</option>
+                            <option value="ditolak">⛔ Ditolak</option>
                         </select>
                     </td>
                     <td class="desk">${r.deskripsi ? esc(r.deskripsi) : '<i style="color:#999">-</i>'}
@@ -356,6 +369,8 @@
             selEl.disabled = true;
             try {
                 await perbarui(r, { status: nilai });
+                const info = { dikonfirmasi: 'Pelapor mendapat +15 poin (sekali per laporan).', diproses: 'Pelapor mendapat +15 poin (sekali per laporan).', selesai: 'Pelapor mendapat +15 dan +25 poin (masing-masing sekali per laporan).' }[nilai];
+                if (info) alert('Status diperbarui. ' + info);
                 updateStatistik();
                 tampilkanLaporan(false);
             } catch (err) {
