@@ -161,7 +161,7 @@
 
         // Kredensial admin (hanya pengingat). Di situs publik (GitHub Pages) disembunyikan karena
         // siapa pun bisa membacanya. Ubah ke true HANYA bila Anda paham risikonya.
-        const KREDENSIAL_TAMPIL_PUBLIK = true;
+        const KREDENSIAL_TAMPIL_PUBLIK = false;
         (function () {
             const lokal = ['localhost', '127.0.0.1', ''].includes(location.hostname);
             if (!lokal && !KREDENSIAL_TAMPIL_PUBLIK) return;
